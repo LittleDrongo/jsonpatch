@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/myaccount/jsonpatch"
+	"github.com/LittleDrongo/jsonpatch"
 )
 
 type profile struct {

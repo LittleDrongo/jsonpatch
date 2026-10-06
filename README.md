@@ -28,7 +28,7 @@ type User struct {
 ## Использование
 
 ```go
-import "github.com/myaccount/jsonpatch"
+import "github.com//LittleDrongo/jsonpatch"
 ```
 
 ### `Merge`
