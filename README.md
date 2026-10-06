@@ -1,4 +1,4 @@
-﻿# jsonpatch
+# jsonpatch
 
 Небольшой пакет для слияния JSON patch с Go-структурами. Правила полей задаются тегом `jsonpatch`.
 
@@ -28,46 +28,67 @@ type User struct {
 ## Использование
 
 ```go
-import "../jsonpatch"
+import "github.com/myaccount/jsonpatch"
 ```
 
 ### `Merge`
 
-Сливает JSON patch с текущим значением. Правила берутся из тегов целевой модели.
+Принимает patch любого типа и возвращает слитую структуру. Если patch — `[]byte`, он трактуется как сырой JSON и используются правила полной модели. Любой другой тип маршалится в JSON и одновременно задаёт список разрешённых полей (используются правила этого типа).
 
 ```go
-err := jsonpatch.Merge(&user, body)
-```
+// Сырой JSON — правила полной модели.
+user, err := jsonpatch.Merge(&user, body)
 
-### `MergeFrom`
-
-Принимает структуру patch или `[]byte`. Структура одновременно задаёт список разрешённых полей; байты используют правила полной модели.
-
-```go
+// Структура patch — список разрешённых полей.
 var dto UpdateUserDTO
 if err := json.Unmarshal(body, &dto); err != nil {
     return err
 }
-err := jsonpatch.MergeFrom(&user, dto)
-
-// Или напрямую байты:
-err = jsonpatch.MergeFrom(&user, body)
+user, err = jsonpatch.Merge(&user, dto)
 ```
 
-### `MergeRaw`
+### `Options`
 
-Сливает patch с исходным JSON и записывает результат в целевую структуру.
+- `ErrorOnReadOnly` — если `true`, попытка изменить поле с тегом `readonly` возвращает ошибку вместо тихого игнорирования.
+- `AllowNull` — разрешить применение `null` ко всем полям (аналог тега `null`).
+- `SliceMode`, `SliceKey` — как сливать массивы (значения по умолчанию для полей без тега).
+- `MapMode` — как сливать map (значение по умолчанию для полей без тега).
 
 ```go
-err := jsonpatch.MergeRaw(&user, originalJSON, body)
+user, err := jsonpatch.Merge(&user, body, jsonpatch.Options{ErrorOnReadOnly: true})
 ```
 
-### `IsNull`
+## Пример
 
-Проверяет, содержит ли JSON-байтовый срез ровно `null`.
+В каталоге `examples/` лежит небольшой HTTP-сервер на стандартном `net/http`:
 
-```go
-if jsonpatch.IsNull(body) {
-    // обработать null
-}
+```bash
+go run ./examples
 ```
+
+Эндпоинты:
+
+- `GET /users/{id}` — получить пользователя.
+- `PATCH /users/{id}` — частичное обновление сырым JSON; попытка изменить `id`/`role` (`readonly`) возвращает `422`.
+- `PUT /users/{id}` — полное обновление сырым JSON; `id` и `role` защищены тегом `readonly` и молча игнорируются.
+
+```bash
+curl localhost:8080/users/1
+
+# Ок — меняется только name.
+curl -X PATCH localhost:8080/users/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Carol"}'
+
+# Ошибка 422 — role только для чтения.
+curl -X PATCH localhost:8080/users/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"role":"owner"}'
+
+# Ок — id и role молча игнорируются (в PUT опция выключена).
+curl -X PUT localhost:8080/users/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"id":99,"name":"Dave","role":"owner"}'
+```
+
+

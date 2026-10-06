@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+const tagName string = "jsonpatch"
+
 type structRules struct {
 	fields   map[string]*fieldRule
 	restrict bool
@@ -42,6 +44,7 @@ func rulesForType(t reflect.Type) *structRules {
 		}
 		return sr
 	}
+
 	sr := buildStructRules(t)
 	if sr == nil {
 		sr = &structRules{}
@@ -74,7 +77,7 @@ func buildStructRules(t reflect.Type) *structRules {
 			continue
 		}
 
-		fr := parseFieldTag(f.Tag.Get("jsonpatch"))
+		fr := parseFieldTag(f.Tag.Get(tagName))
 
 		ft := f.Type
 		for ft.Kind() == reflect.Ptr {

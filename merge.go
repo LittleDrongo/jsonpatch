@@ -1,24 +1,26 @@
 package jsonpatch
 
-func mergeValues(dst, patch any, sr *structRules, opts Options) any {
+import "fmt"
+
+func mergeValues(dst, patch any, sr *structRules, opts Options) (any, error) {
 	switch p := patch.(type) {
 	case map[string]any:
 		return mergeObject(dst, p, sr, opts)
 	case []any:
 		return mergeArray(dst, p, sr, opts)
 	default:
-		return p
+		return p, nil
 	}
 }
 
-func mergeObject(dst any, p map[string]any, sr *structRules, opts Options) any {
+func mergeObject(dst any, p map[string]any, sr *structRules, opts Options) (any, error) {
 	d, ok := dst.(map[string]any)
 	if !ok {
-		return p
+		return p, nil
 	}
 	// Without struct rules, MapReplace replaces the whole object.
 	if sr == nil && opts.MapMode == MapReplace {
-		return p
+		return p, nil
 	}
 
 	for k, pv := range p {
@@ -29,7 +31,13 @@ func mergeObject(dst any, p map[string]any, sr *structRules, opts Options) any {
 				continue
 			}
 		}
-		if fr != nil && (fr.ignore || fr.readonly) {
+		if fr != nil && fr.ignore {
+			continue
+		}
+		if fr != nil && fr.readonly {
+			if opts.ErrorOnReadOnly {
+				return nil, fmt.Errorf("field %q is read-only", k)
+			}
 			continue
 		}
 
@@ -46,32 +54,36 @@ func mergeObject(dst any, p map[string]any, sr *structRules, opts Options) any {
 		childSR := pickChildRules(fr, pv)
 
 		if dv, exists := d[k]; exists {
-			d[k] = mergeValues(dv, pv, childSR, fOpts)
+			merged, err := mergeValues(dv, pv, childSR, fOpts)
+			if err != nil {
+				return nil, err
+			}
+			d[k] = merged
 		} else {
 			d[k] = pv
 		}
 	}
-	return d
+	return d, nil
 }
 
-func mergeArray(dst any, p []any, sr *structRules, opts Options) any {
+func mergeArray(dst any, p []any, sr *structRules, opts Options) (any, error) {
 	d, ok := dst.([]any)
 	if !ok {
-		return p
+		return p, nil
 	}
 	switch opts.SliceMode {
 	case SliceAppend:
-		return append(d, p...)
+		return append(d, p...), nil
 	case SliceMergeByKey:
 		return mergeSliceByKey(d, p, opts.SliceKey, sr, opts)
 	default:
-		return p
+		return p, nil
 	}
 }
 
-func mergeSliceByKey(d, p []any, key string, sr *structRules, opts Options) []any {
+func mergeSliceByKey(d, p []any, key string, sr *structRules, opts Options) ([]any, error) {
 	if key == "" {
-		return append(d, p...)
+		return append(d, p...), nil
 	}
 
 	idx := make(map[any]int, len(d))
@@ -100,13 +112,17 @@ func mergeSliceByKey(d, p []any, key string, sr *structRules, opts Options) []an
 				d[i] = m
 				continue
 			}
-			d[i] = mergeValues(existing, m, sr, opts)
+			merged, err := mergeValues(existing, m, sr, opts)
+			if err != nil {
+				return nil, err
+			}
+			d[i] = merged
 		} else {
 			idx[k] = len(d)
 			d = append(d, el)
 		}
 	}
-	return d
+	return d, nil
 }
 
 func applyFieldOpts(o Options, fr *fieldRule) Options {
